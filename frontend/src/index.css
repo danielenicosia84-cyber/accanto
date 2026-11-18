@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --background: 40 33% 98%;
+    --foreground: 215 28% 17%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 28% 17%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 28% 17%;
+    --primary: 153 41% 30%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 32 95% 44%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 40 20% 95%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 14 70% 63%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 153 41% 30%;
+    --radius: 1rem;
+}
+
+* {
+    border-color: hsl(var(--border));
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    margin: 0;
+    background-color: #FDFBF7;
+    color: #1E293B;
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior-y: none;
+}
+
+.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.pb-nav { padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px)); }
+.scrollbar-hide { scrollbar-width: none; -ms-overflow-style: none; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scroll-fade { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+@media (hover: none) { .hover-none-hide { display: none; } }
+button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
+
+input, textarea, select { font-size: max(16px, 1em); }
+
+h1, h2, h3, h4, .font-heading {
+    font-family: "Lexend", system-ui, sans-serif;
+}
+
+::selection {
+    background: #E07A5F;
+    color: #fff;
+}
+
+@keyframes fade-up {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+    animation: fade-up 0.5s ease-out both;
+}
+
+@keyframes pulse-soft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+}
+.animate-pulse-soft {
+    animation: pulse-soft 1.6s ease-in-out infinite;
+}
