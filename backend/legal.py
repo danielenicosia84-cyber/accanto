@@ -25,7 +25,7 @@ def consent_payload(accept_terms: bool, accept_health: bool, accept_disclaimer: 
 
 @router.get("/legal/issuer")
 async def legal_issuer():
-    s = await db.settings.find_one({"_id": "global"}) or {}
+    s = await db.settings.find_one({"_id": "app"}) or await db.settings.find_one({"_id": "global"}) or {}
     issuer = s.get("issuer") or {}
     return {**{k: issuer.get(k, "") for k in ISSUER_PUBLIC}, "legal_version": LEGAL_VERSION}
 
