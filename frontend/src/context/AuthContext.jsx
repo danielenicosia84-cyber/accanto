@@ -36,11 +36,14 @@ export function AuthProvider({ children }) {
     return data.user;
   }, []);
 
-  const register = useCallback(async (name, email, password, consents = {}) => {
+const register = useCallback(async (name, email, password, consents = {}) => {
     const { data } = await api.post("/auth/register", { name, email, password, accept_terms: !!consents.terms, accept_health: !!consents.health, accept_disclaimer: !!consents.disclaimer });
     setToken(data.token);
     setUser(data.user);
-    return data.user;
+    if (data.recovery_code) {
+      sessionStorage.setItem("accanto_recovery_code", data.recovery_code);
+    }
+    return { ...data.user, recovery_code: data.recovery_code };
   }, []);
 
   const logout = useCallback(async () => {
