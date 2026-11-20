@@ -21,7 +21,7 @@ export function Layout({ children }) {
   return (
     <div className="min-h-screen bg-[#FDFBF7]">
       <header className="pt-safe sticky top-0 z-40 border-b border-slate-200 bg-[#FDFBF7]/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-xl items-center justify-between px-4 py-3">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 md:px-8 py-3">
           <button onClick={() => navigate("/")} className="flex min-w-0 items-center gap-2 text-left" aria-label="Accanto home">
             <img src="/logo.png" alt="Accanto" className="h-9 w-9 flex-shrink-0 rounded-xl object-cover" />
             <div className="min-w-0 leading-tight">
@@ -50,7 +50,7 @@ export function Layout({ children }) {
         </div>
       </header>
       <TrialBanner />
-      <main className="pb-nav mx-auto max-w-xl px-4 pt-5">{children}<LegalFooter className="mt-6" /></main>
+      <main className="pb-nav mx-auto max-w-6xl px-4 md:px-8 pt-5">{children}<LegalFooter className="mt-6" /></main>
       <BottomNav />
     </div>
   );
