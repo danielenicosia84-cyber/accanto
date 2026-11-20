@@ -3,6 +3,8 @@ import logging
 import uuid
 import json
 import re
+import secrets
+import string
 import base64
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -96,6 +98,19 @@ def hash_password(password: str) -> str:
 def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
+def generate_recovery_code() -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    part1 = "".join(secrets.choice(alphabet) for _ in range(4))
+    part2 = "".join(secrets.choice(alphabet) for _ in range(4))
+    return f"ACC-{part1}-{part2}"
+    
+def mask_email(email: str) -> str:
+    local, _, domain = email.partition("@")
+    if not local or not domain:
+        return email
+    visible = local[0] if len(local) == 1 else local[:2]
+    return f"{visible}***@{domain}"
+
 def public_user(user: dict) -> dict:
     return {"id": str(user["_id"]), "email": user["email"], "name": user.get("name", ""), "is_demo": user.get("email") == DEMO_EMAIL, "is_owner": is_owner(user)}
 
@@ -165,6 +180,14 @@ async def analyze_document(data: bytes, ext: str, lang: str) -> dict:
 # ---------------------------------------------------------------------------
 # Auth routes
 # ---------------------------------------------------------------------------
+class RecoverEmailInput(BaseModel):
+    name: str = Field(min_length=1)
+    recovery_code: str = Field(min_length=4)
+
+class ResetPasswordInput(BaseModel):
+    email: EmailStr
+    recovery_code: str = Field(min_length=4)
+    new_password: str = Field(min_length=6)
 @api_router.post("/auth/register")
 async def register(payload: RegisterInput, response: Response):
     email = payload.email.lower()
