@@ -109,6 +109,9 @@ def render_receipt_pdf(payment: dict, customer: dict, issuer: dict) -> bytes:
     period = payment.get("period_label")
     if period:
         c.drawString(m + 4 * mm, y, f"Periodo / Period: {period}")
+        if payment.get("interval") in ("monthly", "yearly"):
+            y -= 4.5 * mm
+            c.drawString(m + 4 * mm, y, "Rinnovo automatico disattivabile dal profilo / Auto-renewal can be cancelled from profile")
     y -= 14 * mm
     c.setStrokeColor(GREEN)
     c.line(m, y + 6 * mm, w - m, y + 6 * mm)
@@ -125,10 +128,11 @@ def render_receipt_pdf(payment: dict, customer: dict, issuer: dict) -> bytes:
     footer_it = issuer.get("footer_it") or DEFAULT_ISSUER["footer_it"]
     footer_en = issuer.get("footer_en") or DEFAULT_ISSUER["footer_en"]
     fy = 30 * mm
-    for txt in (footer_it, footer_en):
-        for chunk in _wrap(txt, 110):
-            c.drawString(m, fy, chunk); fy -= 4 * mm
-        fy -= 2 * mm
+    fy -= 2 * mm
+    support_email = issuer.get("email") or DEFAULT_ISSUER.get("email") or ""
+    if support_email:
+        c.drawString(m, fy, f"Assistenza abbonamenti e ricevute / Support: {support_email}")
+        fy -= 4 * mm
     c.drawString(m, 12 * mm, f"Accanto - Ricevuta {payment['receipt_number']} - generata il {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC")
     c.showPage()
     c.save()
