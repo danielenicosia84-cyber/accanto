@@ -127,14 +127,17 @@ def render_receipt_pdf(payment: dict, customer: dict, issuer: dict) -> bytes:
     c.setFillColor(GREY)
     footer_it = issuer.get("footer_it") or DEFAULT_ISSUER["footer_it"]
     footer_en = issuer.get("footer_en") or DEFAULT_ISSUER["footer_en"]
-    fy = 30 * mm
-    fy -= 2 * mm
+    fy = 34 * mm
+    for txt in (footer_it, footer_en):
+        if txt:
+            for chunk in _wrap(txt, 110):
+                c.drawString(m, fy, chunk)
+                fy -= 3.8 * mm
+            fy -= 1.5 * mm
     support_email = issuer.get("email") or DEFAULT_ISSUER.get("email") or ""
     if support_email:
         c.drawString(m, fy, f"Assistenza abbonamenti e ricevute / Support: {support_email}")
-        fy -= 4 * mm
     c.drawString(m, 12 * mm, f"Accanto - Ricevuta {payment['receipt_number']} - generata il {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC")
-    c.showPage()
     c.save()
     return buf.getvalue()
 
