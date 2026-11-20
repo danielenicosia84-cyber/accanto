@@ -188,19 +188,72 @@ class ResetPasswordInput(BaseModel):
     email: EmailStr
     recovery_code: str = Field(min_length=4)
     new_password: str = Field(min_length=6)
+
+
 @api_router.post("/auth/register")
 async def register(payload: RegisterInput, response: Response):
     email = payload.email.lower()
     consents = consent_payload(payload.accept_terms, payload.accept_health, payload.accept_disclaimer)
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email gia' registrata")
-    doc = {"email": email, "password_hash": hash_password(payload.password), "name": payload.name, "created_at": now_iso(), "consents": consents,
-           "trial_ends_at": (datetime.now(timezone.utc) + timedelta(days=TRIAL_DAYS)).isoformat()}
+    recovery_code = generate_recovery_code()
+    doc = {
+        "email": email,
+        "password_hash": hash_password(payload.password),
+        "recovery_code_hash": hash_password(recovery_code),
+        "name": payload.name,
+        "created_at": now_iso(),
+        "consents": consents,
+        "trial_ends_at": (datetime.now(timezone.utc) + timedelta(days=TRIAL_DAYS)).isoformat(),
+    }
     res = await db.users.insert_one(doc)
     doc["_id"] = res.inserted_id
     token = create_access_token(str(res.inserted_id), email)
     set_auth_cookie(response, token)
-    return {"user": public_user(doc), "token": token}
+    return {"user": public_user(doc), "token": token, "recovery_code": recovery_code}
+
+
+@api_router.post("/auth/recover-email")
+async def recover_email(payload: RecoverEmailInput):
+    clean_name = " ".join(payload.name.strip().lower().split())
+    clean_code = payload.recovery_code.strip().upper()
+    if not clean_name or not clean_code:
+        raise HTTPException(status_code=400, detail="Inserisci nome e codice di recupero")
+
+    cursor = db.users.find({"recovery_code_hash": {"$exists": True, "$ne": None}})
+    async for user in cursor:
+        user_name = " ".join((user.get("name") or "").strip().lower().split())
+        if user_name == clean_name and verify_password(clean_code, user["recovery_code_hash"]):
+            return {"masked_email": mask_email(user["email"])}
+
+    raise HTTPException(status_code=404, detail="Nessun account trovato con questi dati")
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(payload: ResetPasswordInput):
+    email = payload.email.strip().lower()
+    clean_code = payload.recovery_code.strip().upper()
+    user = await db.users.find_one({"email": email})
+    if not user or not user.get("recovery_code_hash"):
+        raise HTTPException(status_code=400, detail="Email o codice di recupero non validi")
+
+    if not verify_password(clean_code, user["recovery_code_hash"]):
+        raise HTTPException(status_code=400, detail="Email o codice di recupero non validi")
+
+    next_code = generate_recovery_code()
+    await db.users.update_one(
+        {"_id": user["_id"]},
+        {
+            "$set": {
+                "password_hash": hash_password(payload.new_password),
+                "recovery_code_hash": hash_password(next_code),
+            }
+        },
+    )
+    return {
+        "message": "Password aggiornata con successo",
+        "new_recovery_code": next_code,
+    }
 
 @api_router.post("/auth/login")
 async def login(payload: LoginInput, response: Response):
