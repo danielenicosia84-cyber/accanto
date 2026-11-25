@@ -182,12 +182,14 @@ async def analyze_document(data: bytes, ext: str, lang: str) -> dict:
 # ---------------------------------------------------------------------------
 class RecoverEmailInput(BaseModel):
     name: str = Field(min_length=1)
-    recovery_code: str = Field(min_length=4)
+    recovery_code: str = Field(default="", max_length=64)
+
 
 class ResetPasswordInput(BaseModel):
     email: EmailStr
-    recovery_code: str = Field(min_length=4)
+    recovery_code: str = Field(default="", max_length=64)
     new_password: str = Field(min_length=6)
+    legacy_name: str = Field(default="", max_length=120)
 
 
 @api_router.post("/auth/register")
@@ -195,7 +197,7 @@ async def register(payload: RegisterInput, response: Response):
     email = payload.email.lower()
     consents = consent_payload(payload.accept_terms, payload.accept_health, payload.accept_disclaimer)
     if await db.users.find_one({"email": email}):
-        raise HTTPException(status_code=400, detail="Email gia' registrata")
+        raise HTTPException(status_code=400, detail="Email già registrata")
     recovery_code = generate_recovery_code()
     doc = {
         "email": email,
@@ -217,14 +219,21 @@ async def register(payload: RegisterInput, response: Response):
 async def recover_email(payload: RecoverEmailInput):
     clean_name = " ".join(payload.name.strip().lower().split())
     clean_code = payload.recovery_code.strip().upper()
-    if not clean_name or not clean_code:
-        raise HTTPException(status_code=400, detail="Inserisci nome e codice di recupero")
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Inserisci il nome registrato sull'account")
 
-    cursor = db.users.find({"recovery_code_hash": {"$exists": True, "$ne": None}})
+    cursor = db.users.find({})
     async for user in cursor:
         user_name = " ".join((user.get("name") or "").strip().lower().split())
-        if user_name == clean_name and verify_password(clean_code, user["recovery_code_hash"]):
-            return {"masked_email": mask_email(user["email"])}
+        if user_name != clean_name:
+            continue
+        code_hash = user.get("recovery_code_hash")
+        if code_hash:
+            if clean_code and verify_password(clean_code, code_hash):
+                return {"masked_email": mask_email(user["email"])}
+        else:
+            # Account creato prima dell'introduzione del codice di recupero
+            return {"masked_email": mask_email(user["email"]), "legacy_account": True}
 
     raise HTTPException(status_code=404, detail="Nessun account trovato con questi dati")
 
@@ -233,12 +242,23 @@ async def recover_email(payload: RecoverEmailInput):
 async def reset_password(payload: ResetPasswordInput):
     email = payload.email.strip().lower()
     clean_code = payload.recovery_code.strip().upper()
+    clean_legacy_name = " ".join((payload.legacy_name or payload.recovery_code or "").strip().lower().split())
     user = await db.users.find_one({"email": email})
-    if not user or not user.get("recovery_code_hash"):
-        raise HTTPException(status_code=400, detail="Email o codice di recupero non validi")
+    if not user:
+        raise HTTPException(status_code=400, detail="Account non trovato")
 
-    if not verify_password(clean_code, user["recovery_code_hash"]):
-        raise HTTPException(status_code=400, detail="Email o codice di recupero non validi")
+    code_hash = user.get("recovery_code_hash")
+    if code_hash:
+        if not clean_code or not verify_password(clean_code, code_hash):
+            raise HTTPException(status_code=400, detail="Email o codice di recupero non validi")
+    else:
+        # Recupero autonomo per account creati prima del codice di recupero
+        user_name = " ".join((user.get("name") or "").strip().lower().split())
+        if not clean_legacy_name or not user_name or clean_legacy_name != user_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Account precedente alla funzione codice: inserisci il Nome esatto registrato sull'account per reimpostare la password"
+            )
 
     next_code = generate_recovery_code()
     await db.users.update_one(
@@ -254,7 +274,6 @@ async def reset_password(payload: ResetPasswordInput):
         "message": "Password aggiornata con successo",
         "new_recovery_code": next_code,
     }
-
 @api_router.post("/auth/login")
 async def login(payload: LoginInput, response: Response):
     email = payload.email.lower()
