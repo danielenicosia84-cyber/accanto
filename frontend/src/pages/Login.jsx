@@ -107,7 +107,17 @@ export default function Login() {
     }
   };
 
-if (recoveryMode) {
+  const footer = (
+    <>
+      <p className="mt-6 text-center text-base text-slate-600">
+        {t("no_account")}{" "}
+        <Link to="/register" data-testid="go-register" className="font-semibold text-[#2D6A4F] hover:underline">{t("register")}</Link>
+      </p>
+      <LegalFooter />
+    </>
+  );
+
+  if (recoveryMode) {
     return (
       <AuthShell
         title="Recupero Account"
@@ -231,35 +241,6 @@ if (recoveryMode) {
       </AuthShell>
     );
   }
-                <input type="text" required value={recCode} onChange={(e) => setRecCode(e.target.value.toUpperCase())} className={`${authInputClass} font-mono uppercase`} placeholder="ACC-XXXX-XXXX" />
-              </AuthField>
-              {recError && <p className="rounded-xl bg-[#FFF5F5] px-4 py-3 text-sm font-medium text-[#C53030]">{recError}</p>}
-              {recResult?.type === "email" && (
-                <div className="space-y-2 rounded-xl bg-[#E8F5E9] p-4 text-sm text-[#1B4332]">
-                  <p>Account trovato! L'email associata è:</p>
-                  <p className="font-mono text-base font-bold text-slate-900">{recResult.maskedEmail}</p>
-                  <button
-                    type="button"
-                    onClick={() => setRecoveryMode(false)}
-                    className="mt-1 w-full rounded-xl bg-[#2D6A4F] py-2 text-center font-semibold text-white hover:bg-[#1B4332]"
-                  >
-                    Torna al Login
-                  </button>
-                </div>
-              )}
-              <button
-                type="submit"
-                disabled={recLoading}
-                className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-2xl bg-[#2D6A4F] text-base font-semibold text-white transition-colors hover:bg-[#1B4332] disabled:opacity-60"
-              >
-                {recLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Trova Email Account"}
-              </button>
-            </form>
-          )}
-        </div>
-      </AuthShell>
-    );
-  }
 
   return (
     <AuthShell title={t("login_title")} subtitle={t("login_sub")} footer={footer}>
@@ -288,6 +269,9 @@ if (recoveryMode) {
           {t("use_demo")}
         </button>
       </form>
+    </AuthShell>
+  );
+}
     </AuthShell>
   );
 }
