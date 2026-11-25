@@ -107,19 +107,13 @@ export default function Login() {
     }
   };
 
-  const footer = (
-    <>
-      <p className="mt-6 text-center text-base text-slate-600">
-        {t("no_account")}{" "}
-        <Link to="/register" data-testid="go-register" className="font-semibold text-[#2D6A4F] hover:underline">{t("register")}</Link>
-      </p>
-      <LegalFooter />
-    </>
-  );
-
-  if (recoveryMode) {
+if (recoveryMode) {
     return (
-      <AuthShell title="Recupero Account" subtitle="Usa il tuo Codice di Recupero personale" footer={footer}>
+      <AuthShell
+        title="Recupero Account"
+        subtitle="Usa il Codice di Recupero oppure il Nome registrato (per account precedenti)"
+        footer={footer}
+      >
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <button
             type="button"
@@ -151,8 +145,14 @@ export default function Login() {
               <AuthField label="Email dell'account">
                 <input type="email" required value={recEmail} onChange={(e) => setRecEmail(e.target.value)} className={authInputClass} placeholder="nome@email.com" />
               </AuthField>
-              <AuthField label="Codice di Recupero (es. ACC-XXXX-XXXX)">
-                <input type="text" required value={recCode} onChange={(e) => setRecCode(e.target.value.toUpperCase())} className={`${authInputClass} font-mono uppercase`} placeholder="ACC-XXXX-XXXX" />
+              <AuthField label="Codice di Recupero (es. ACC-XXXX-XXXX) oppure Nome registrato">
+                <input
+                  type="text"
+                  value={recCode}
+                  onChange={(e) => setRecCode(e.target.value)}
+                  className={`${authInputClass} font-mono`}
+                  placeholder="ACC-XXXX-XXXX o Nome registrato"
+                />
               </AuthField>
               <AuthField label="Nuova Password (min. 6 caratteri)">
                 <PasswordInput value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={6} autoComplete="new-password" />
@@ -195,7 +195,42 @@ export default function Login() {
               <AuthField label="Nome e Cognome registrati">
                 <input type="text" required value={recName} onChange={(e) => setRecName(e.target.value)} className={authInputClass} placeholder="Maria Rossi" />
               </AuthField>
-              <AuthField label="Codice di Recupero (es. ACC-XXXX-XXXX)">
+              <AuthField label="Codice di Recupero (opzionale per account precedenti)">
+                <input
+                  type="text"
+                  value={recCode}
+                  onChange={(e) => setRecCode(e.target.value)}
+                  className={`${authInputClass} font-mono`}
+                  placeholder="ACC-XXXX-XXXX (se disponibile)"
+                />
+              </AuthField>
+              {recError && <p className="rounded-xl bg-[#FFF5F5] px-4 py-3 text-sm font-medium text-[#C53030]">{recError}</p>}
+              {recResult?.type === "email" && (
+                <div className="space-y-2 rounded-xl bg-[#E8F5E9] p-4 text-sm text-[#1B4332]">
+                  <p>Account trovato! L'email associata è:</p>
+                  <p className="font-mono text-base font-bold text-slate-900">{recResult.maskedEmail}</p>
+                  <button
+                    type="button"
+                    onClick={() => setRecoveryMode(false)}
+                    className="mt-1 w-full rounded-xl bg-[#2D6A4F] py-2 text-center font-semibold text-white hover:bg-[#1B4332]"
+                  >
+                    Torna al Login
+                  </button>
+                </div>
+              )}
+              <button
+                type="submit"
+                disabled={recLoading}
+                className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-2xl bg-[#2D6A4F] text-base font-semibold text-white transition-colors hover:bg-[#1B4332] disabled:opacity-60"
+              >
+                {recLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Trova Email Account"}
+              </button>
+            </form>
+          )}
+        </div>
+      </AuthShell>
+    );
+  }
                 <input type="text" required value={recCode} onChange={(e) => setRecCode(e.target.value.toUpperCase())} className={`${authInputClass} font-mono uppercase`} placeholder="ACC-XXXX-XXXX" />
               </AuthField>
               {recError && <p className="rounded-xl bg-[#FFF5F5] px-4 py-3 text-sm font-medium text-[#C53030]">{recError}</p>}
