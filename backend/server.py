@@ -55,29 +55,45 @@ api_router = APIRouter(prefix="/api")
 # ---------------------------------------------------------------------------
 PyObjectId = Annotated[str, BeforeValidator(str)]
 
+SECURITY_QUESTIONS = [
+    "Qual è il nome del tuo primo animale domestico?",
+    "In quale città sei nato o cresciuto?",
+    "Qual è il nome della tua scuola elementare?",
+    "Qual è il tuo piatto o dolce preferito?",
+    "Qual è il nome del tuo migliore amico d'infanzia?",
+]
+
+
 class RegisterInput(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6)
     name: str
+    security_question: str = Field(min_length=3, max_length=200)
+    security_answer: str = Field(min_length=2, max_length=200)
     accept_terms: bool = False
     accept_health: bool = False
     accept_disclaimer: bool = False
 
+
 class LoginInput(BaseModel):
     email: EmailStr
     password: str
+
 
 class ProfileInput(BaseModel):
     name: str
     relation: str = ""
     color: str = "#2D6A4F"
 
+
 class TermInput(BaseModel):
     term: str
     lang: str = "it"
 
+
 class LangInput(BaseModel):
     lang: str = "it"
+
 
 class ReminderInput(BaseModel):
     profile_id: str
@@ -86,8 +102,10 @@ class ReminderInput(BaseModel):
     due_label: str = ""
     document_id: Optional[str] = None
 
+
 class ReminderUpdate(BaseModel):
     done: bool
+
 
 # ---------------------------------------------------------------------------
 # Auth helpers
@@ -95,15 +113,22 @@ class ReminderUpdate(BaseModel):
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
+
 def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+
+
+def normalize_secret(value: str) -> str:
+    return " ".join((value or "").strip().lower().split())
+
 
 def generate_recovery_code() -> str:
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     part1 = "".join(secrets.choice(alphabet) for _ in range(4))
     part2 = "".join(secrets.choice(alphabet) for _ in range(4))
     return f"ACC-{part1}-{part2}"
-    
+
+
 def mask_email(email: str) -> str:
     local, _, domain = email.partition("@")
     if not local or not domain:
@@ -111,11 +136,20 @@ def mask_email(email: str) -> str:
     visible = local[0] if len(local) == 1 else local[:2]
     return f"{visible}***@{domain}"
 
+
 def public_user(user: dict) -> dict:
-    return {"id": str(user["_id"]), "email": user["email"], "name": user.get("name", ""), "is_demo": user.get("email") == DEMO_EMAIL, "is_owner": is_owner(user)}
+    return {
+        "id": str(user["_id"]),
+        "email": user["email"],
+        "name": user.get("name", ""),
+        "is_demo": user.get("email") == DEMO_EMAIL,
+        "is_owner": is_owner(user),
+    }
+
 
 def set_auth_cookie(response: Response, token: str):
     response.set_cookie(key="access_token", value=token, httponly=True, secure=True, samesite="none", max_age=604800, path="/")
+
 
 # ---------------------------------------------------------------------------
 # AI
@@ -128,6 +162,7 @@ def build_file_part(data: bytes, ext: str):
         return FileContentWithMimeType(mime_type="application/pdf", file_path=tmp), tmp
     b64 = base64.b64encode(data).decode("utf-8")
     return ImageContent(image_base64=b64), None
+
 
 def extract_json(text: str) -> dict:
     text = text.strip()
@@ -142,6 +177,7 @@ def extract_json(text: str) -> dict:
         return json.loads(text)
     except Exception:
         return {}
+
 
 async def analyze_document(data: bytes, ext: str, lang: str) -> dict:
     lang_name = "italiano" if lang == "it" else "English"
@@ -177,32 +213,43 @@ async def analyze_document(data: bytes, ext: str, lang: str) -> dict:
     result.setdefault("deadlines", [])
     return result
 
+
 # ---------------------------------------------------------------------------
 # Auth routes
 # ---------------------------------------------------------------------------
+class SecurityQuestionInput(BaseModel):
+    email: EmailStr
+
+
 class RecoverEmailInput(BaseModel):
     name: str = Field(min_length=1)
-    recovery_code: str = Field(default="", max_length=64)
+    security_answer: str = Field(default="", max_length=200)
 
 
 class ResetPasswordInput(BaseModel):
     email: EmailStr
-    recovery_code: str = Field(default="", max_length=64)
+    security_answer: str = Field(default="", max_length=200)
     new_password: str = Field(min_length=6)
     legacy_name: str = Field(default="", max_length=120)
+    security_question: str = Field(default="", max_length=200)
+    new_security_answer: str = Field(default="", max_length=200)
 
 
 @api_router.post("/auth/register")
 async def register(payload: RegisterInput, response: Response):
     email = payload.email.lower()
+    clean_question = " ".join(payload.security_question.strip().split())
+    clean_answer = normalize_secret(payload.security_answer)
+    if not clean_question or not clean_answer:
+        raise HTTPException(status_code=400, detail="Inserisci domanda e risposta di sicurezza")
     consents = consent_payload(payload.accept_terms, payload.accept_health, payload.accept_disclaimer)
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email già registrata")
-    recovery_code = generate_recovery_code()
     doc = {
         "email": email,
         "password_hash": hash_password(payload.password),
-        "recovery_code_hash": hash_password(recovery_code),
+        "security_question": clean_question,
+        "security_answer_hash": hash_password(clean_answer),
         "name": payload.name,
         "created_at": now_iso(),
         "consents": consents,
@@ -212,27 +259,38 @@ async def register(payload: RegisterInput, response: Response):
     doc["_id"] = res.inserted_id
     token = create_access_token(str(res.inserted_id), email)
     set_auth_cookie(response, token)
-    return {"user": public_user(doc), "token": token, "recovery_code": recovery_code}
+    return {"user": public_user(doc), "token": token}
+
+
+@api_router.post("/auth/security-question")
+async def get_security_question(payload: SecurityQuestionInput):
+    email = payload.email.strip().lower()
+    user = await db.users.find_one({"email": email})
+    if not user:
+        raise HTTPException(status_code=404, detail="Nessun account trovato con questa email")
+    question = user.get("security_question")
+    if question and user.get("security_answer_hash"):
+        return {"has_security_question": True, "security_question": question}
+    return {"has_security_question": False, "security_question": ""}
 
 
 @api_router.post("/auth/recover-email")
 async def recover_email(payload: RecoverEmailInput):
-    clean_name = " ".join(payload.name.strip().lower().split())
-    clean_code = payload.recovery_code.strip().upper()
+    clean_name = normalize_secret(payload.name)
+    clean_answer = normalize_secret(payload.security_answer)
     if not clean_name:
         raise HTTPException(status_code=400, detail="Inserisci il nome registrato sull'account")
 
     cursor = db.users.find({})
     async for user in cursor:
-        user_name = " ".join((user.get("name") or "").strip().lower().split())
+        user_name = normalize_secret(user.get("name") or "")
         if user_name != clean_name:
             continue
-        code_hash = user.get("recovery_code_hash")
-        if code_hash:
-            if clean_code and verify_password(clean_code, code_hash):
+        ans_hash = user.get("security_answer_hash")
+        if ans_hash:
+            if clean_answer and verify_password(clean_answer, ans_hash):
                 return {"masked_email": mask_email(user["email"])}
         else:
-            # Account creato prima dell'introduzione del codice di recupero
             return {"masked_email": mask_email(user["email"]), "legacy_account": True}
 
     raise HTTPException(status_code=404, detail="Nessun account trovato con questi dati")
@@ -241,39 +299,35 @@ async def recover_email(payload: RecoverEmailInput):
 @api_router.post("/auth/reset-password")
 async def reset_password(payload: ResetPasswordInput):
     email = payload.email.strip().lower()
-    clean_code = payload.recovery_code.strip().upper()
-    clean_legacy_name = " ".join((payload.legacy_name or payload.recovery_code or "").strip().lower().split())
+    clean_answer = normalize_secret(payload.security_answer)
+    clean_legacy_name = normalize_secret(payload.legacy_name)
     user = await db.users.find_one({"email": email})
     if not user:
         raise HTTPException(status_code=400, detail="Account non trovato")
 
-    code_hash = user.get("recovery_code_hash")
-    if code_hash:
-        if not clean_code or not verify_password(clean_code, code_hash):
-            raise HTTPException(status_code=400, detail="Email o codice di recupero non validi")
+    ans_hash = user.get("security_answer_hash")
+    update_fields = {"password_hash": hash_password(payload.new_password)}
+
+    if ans_hash:
+        if not clean_answer or not verify_password(clean_answer, ans_hash):
+            raise HTTPException(status_code=400, detail="Risposta di sicurezza non corretta")
     else:
-        # Recupero autonomo per account creati prima del codice di recupero
-        user_name = " ".join((user.get("name") or "").strip().lower().split())
+        user_name = normalize_secret(user.get("name") or "")
         if not clean_legacy_name or not user_name or clean_legacy_name != user_name:
             raise HTTPException(
                 status_code=400,
-                detail="Account precedente alla funzione codice: inserisci il Nome esatto registrato sull'account per reimpostare la password"
+                detail="Account precedente: inserisci il Nome esatto registrato sull'account per reimpostare la password",
             )
+        new_q = " ".join((payload.security_question or "").strip().split())
+        new_a = normalize_secret(payload.new_security_answer)
+        if new_q and new_a:
+            update_fields["security_question"] = new_q
+            update_fields["security_answer_hash"] = hash_password(new_a)
 
-    next_code = generate_recovery_code()
-    await db.users.update_one(
-        {"_id": user["_id"]},
-        {
-            "$set": {
-                "password_hash": hash_password(payload.new_password),
-                "recovery_code_hash": hash_password(next_code),
-            }
-        },
-    )
-    return {
-        "message": "Password aggiornata con successo",
-        "new_recovery_code": next_code,
-    }
+    await db.users.update_one({"_id": user["_id"]}, {"$set": update_fields})
+    return {"message": "Password aggiornata con successo"}
+
+
 @api_router.post("/auth/login")
 async def login(payload: LoginInput, response: Response):
     email = payload.email.lower()
@@ -284,14 +338,17 @@ async def login(payload: LoginInput, response: Response):
     set_auth_cookie(response, token)
     return {"user": public_user(user), "token": token}
 
+
 @api_router.post("/auth/logout")
 async def logout(response: Response):
     response.delete_cookie("access_token", path="/")
     return {"ok": True}
 
+
 @api_router.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
     return {"user": public_user(user)}
+
 
 # ---------------------------------------------------------------------------
 # Profiles
@@ -301,6 +358,7 @@ async def list_profiles(user: dict = Depends(get_current_user)):
     docs = await db.profiles.find({"user_id": str(user["_id"]), "is_deleted": {"$ne": True}}).sort("created_at", 1).to_list(100)
     return [profile_out(p) for p in docs]
 
+
 @api_router.post("/profiles")
 async def create_profile(payload: ProfileInput, user: dict = Depends(get_current_user)):
     await require_profile_slot(user)
@@ -309,6 +367,7 @@ async def create_profile(payload: ProfileInput, user: dict = Depends(get_current
     doc["_id"] = res.inserted_id
     return profile_out(doc)
 
+
 @api_router.delete("/profiles/{profile_id}")
 async def delete_profile(profile_id: str, user: dict = Depends(get_current_user)):
     require_not_demo(user)
@@ -316,6 +375,7 @@ async def delete_profile(profile_id: str, user: dict = Depends(get_current_user)
         raise HTTPException(status_code=404, detail="Profilo non trovato")
     await db.profiles.update_one({"_id": ObjectId(profile_id), "user_id": str(user["_id"])}, {"$set": {"is_deleted": True}})
     return {"ok": True}
+
 
 # ---------------------------------------------------------------------------
 # Documents
@@ -335,6 +395,7 @@ def document_out(d: dict) -> dict:
         "created_at": d.get("created_at"),
     }
 
+
 def validate_upload(filename: str, data: bytes) -> str:
     ext = (filename.rsplit(".", 1)[-1] if "." in filename else "bin").lower()
     if ext not in MIME_TYPES:
@@ -343,12 +404,14 @@ def validate_upload(filename: str, data: bytes) -> str:
         raise HTTPException(status_code=400, detail="File troppo grande (max 15MB).")
     return ext
 
+
 async def safe_analyze(data: bytes, ext: str, lang: str, filename: str) -> tuple[dict, str]:
     try:
         return await analyze_document(data, ext, lang), "ready"
     except Exception as e:
         logger.error(f"AI analysis failed: {e}")
         return {"title": filename, "category": "Altro", "summary": "", "key_terms": [], "deadlines": []}, "error"
+
 
 async def create_reminders_from_deadlines(user_id: str, profile_id: str, document_id: str, deadlines: list):
     for dl in deadlines:
@@ -363,6 +426,7 @@ async def create_reminders_from_deadlines(user_id: str, profile_id: str, documen
             "source": "ai",
             "created_at": now_iso(),
         })
+
 
 @api_router.post("/documents/upload")
 async def upload_document(
@@ -402,10 +466,12 @@ async def upload_document(
     await create_reminders_from_deadlines(str(user["_id"]), profile_id, str(res.inserted_id), analysis.get("deadlines", []))
     return document_out(doc)
 
+
 @api_router.get("/documents")
 async def list_documents(profile_id: str = Query(...), user: dict = Depends(get_current_user)):
     docs = await db.documents.find({"user_id": str(user["_id"]), "profile_id": profile_id, "is_deleted": {"$ne": True}}).sort("created_at", -1).to_list(500)
     return [document_out(d) for d in docs]
+
 
 @api_router.get("/documents/{document_id}")
 async def get_document(document_id: str, user: dict = Depends(get_current_user)):
@@ -413,6 +479,7 @@ async def get_document(document_id: str, user: dict = Depends(get_current_user))
     if not d:
         raise HTTPException(status_code=404, detail="Documento non trovato")
     return document_out(d)
+
 
 @api_router.get("/documents/{document_id}/file")
 async def download_document(document_id: str, authorization: str = Header(None), auth: str = Query(None)):
@@ -434,12 +501,14 @@ async def download_document(document_id: str, authorization: str = Header(None),
     content, ctype = get_object(d["storage_path"])
     return StarletteResponse(content=content, media_type=d.get("content_type", ctype))
 
+
 @api_router.delete("/documents/{document_id}")
 async def delete_document(document_id: str, user: dict = Depends(get_current_user)):
     require_not_demo(user)
     await db.documents.update_one({"_id": ObjectId(document_id), "user_id": str(user["_id"])}, {"$set": {"is_deleted": True}})
     await db.reminders.update_many({"document_id": document_id, "user_id": str(user["_id"])}, {"$set": {"done": True}})
     return {"ok": True}
+
 
 @api_router.post("/documents/{document_id}/explain")
 async def explain_simple(document_id: str, payload: LangInput, user: dict = Depends(get_current_user)):
@@ -458,6 +527,7 @@ async def explain_simple(document_id: str, payload: LangInput, user: dict = Depe
     await record_ai_usage(user)
     return {"answer": text}
 
+
 @api_router.post("/documents/{document_id}/term")
 async def explain_term(document_id: str, payload: TermInput, user: dict = Depends(get_current_user)):
     await require_ai(user)
@@ -473,6 +543,7 @@ async def explain_term(document_id: str, payload: TermInput, user: dict = Depend
     text = await ai_text(SYSTEM_PROMPT, prompt)
     await record_ai_usage(user)
     return {"answer": text}
+
 
 @api_router.post("/documents/{document_id}/next-steps")
 async def next_steps(document_id: str, payload: LangInput, user: dict = Depends(get_current_user)):
@@ -490,6 +561,7 @@ async def next_steps(document_id: str, payload: LangInput, user: dict = Depends(
     await record_ai_usage(user)
     return {"answer": text}
 
+
 # ---------------------------------------------------------------------------
 # Reminders
 # ---------------------------------------------------------------------------
@@ -506,10 +578,12 @@ def reminder_out(r: dict) -> dict:
         "created_at": r.get("created_at"),
     }
 
+
 @api_router.get("/reminders")
 async def list_reminders(profile_id: str = Query(...), user: dict = Depends(get_current_user)):
     docs = await db.reminders.find({"user_id": str(user["_id"]), "profile_id": profile_id}).sort("created_at", -1).to_list(500)
     return [reminder_out(r) for r in docs]
+
 
 @api_router.post("/reminders")
 async def create_reminder(payload: ReminderInput, user: dict = Depends(get_current_user)):
@@ -529,6 +603,7 @@ async def create_reminder(payload: ReminderInput, user: dict = Depends(get_curre
     doc["_id"] = res.inserted_id
     return reminder_out(doc)
 
+
 @api_router.patch("/reminders/{reminder_id}")
 async def update_reminder(reminder_id: str, payload: ReminderUpdate, user: dict = Depends(get_current_user)):
     require_not_demo(user)
@@ -536,15 +611,18 @@ async def update_reminder(reminder_id: str, payload: ReminderUpdate, user: dict 
     r = await db.reminders.find_one({"_id": ObjectId(reminder_id)})
     return reminder_out(r)
 
+
 @api_router.delete("/reminders/{reminder_id}")
 async def delete_reminder(reminder_id: str, user: dict = Depends(get_current_user)):
     require_not_demo(user)
     await db.reminders.delete_one({"_id": ObjectId(reminder_id), "user_id": str(user["_id"])})
     return {"ok": True}
 
+
 @api_router.get("/")
 async def root():
     return {"message": "Accanto API"}
+
 
 app.include_router(api_router)
 app.include_router(billing_router)
@@ -559,6 +637,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.on_event("startup")
 async def startup():
@@ -600,6 +679,7 @@ async def startup():
                 await seed_rich_data(u)
             except Exception as e:
                 logger.error(f"Rich seed failed for {email}: {e}")
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
