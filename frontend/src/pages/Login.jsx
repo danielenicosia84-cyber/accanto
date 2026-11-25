@@ -272,6 +272,3 @@ export default function Login() {
     </AuthShell>
   );
 }
-    </AuthShell>
-  );
-}
