@@ -268,7 +268,7 @@ export default function Login() {
         <button type="button" onClick={fillDemo} data-testid="use-demo-button" className="min-h-[44px] w-full text-center text-sm font-semibold text-[#52796F] hover:underline">
           {t("use_demo")}
         </button>
-      </form>
-    </AuthShell>
+     </form>
+  </AuthShell>
   );
 }
